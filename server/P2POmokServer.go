@@ -22,7 +22,8 @@ type Connection struct {
 	port       string
 }
 
-var connections = make(map[string]Connection)
+// array of connections Connection[]
+var connections = []Connection{}
 
 // @TODO: Make it const
 const PORT = 30000
@@ -59,29 +60,67 @@ func handleRequest(conn net.Conn) {
 	for {
 		n, err := conn.Read(buffer)
 		if err != nil {
-			fmt.Println("Error reading: ", err.Error())
+			fmt.Println("Connection closed: ", err.Error())
 			return
 		}
 
-		// meesage format: <nickname>:<ip>:<port>
+		// meesage format: <nickname>:<port>
 		recv := string(buffer[:n])
+		fmt.Println("recv message: ", recv)
 		splitted := strings.Split(recv, ":")
 
-		if len(splitted) != 3 {
+		if len(splitted) != 2 {
 			fmt.Println("Invalid message format: ", recv)
 			return
 		}
 
-		nickname := splitted[0]
-		connections[nickname] = Connection{
-			nickname:   splitted[0],
-			connection: conn,
-			ip:         splitted[1],
-			port:       splitted[2],
+		// search name is already used
+		for _, connection := range connections {
+			if connection.nickname == splitted[0] {
+				fmt.Println("Nickname is already used: ", splitted[0])
+				_, err = conn.Write([]byte("Nickname is already used"))
+				if err != nil {
+					fmt.Println("Error sending message: ", err.Error())
+				}
+				return
+			}
 		}
 
-		// run matching logic
+		// save connection
+		connections = append(connections, Connection{
+			nickname:   splitted[0],
+			connection: conn,
+			ip:         conn.RemoteAddr().(*net.TCPAddr).IP.String(),
+			port:       splitted[1],
+		})
 
-		fmt.Println("Received message: ", recv)
+		// run matching logic
+		if len(connections) == 2 {
+			firstPlayer := connections[0]
+			secondPlayer := connections[1]
+
+			// send opponent info
+			// <nickname>:<ip>:<port>
+			_, err = firstPlayer.connection.Write([]byte(
+				fmt.Sprintf("%s:%s:%s", secondPlayer.nickname, secondPlayer.ip, secondPlayer.port),
+			))
+
+			if err != nil {
+				fmt.Println("Error sending message: ", err.Error())
+				return
+			}
+
+			_, err = secondPlayer.connection.Write([]byte(
+				fmt.Sprintf("%s:%s:%s", firstPlayer.nickname, firstPlayer.ip, firstPlayer.port),
+			))
+
+			if err != nil {
+				fmt.Println("Error sending message: ", err.Error())
+				return
+			}
+
+			// clear connections
+			connections = []Connection{}
+		}
 	}
 }
