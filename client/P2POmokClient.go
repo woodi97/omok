@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const (
@@ -16,8 +17,12 @@ const (
 	Col = 10
 )
 
+const maxNameLen = 64
+
 const SERVER_IP = "127.0.0.1"
 const SERVER_PORT = "30000"
+
+const turnLimit = time.Second * 10
 
 type Board [][]int
 
@@ -25,6 +30,7 @@ type User struct {
 	nickname string
 	ip       string
 	port     int
+	isFirst bool
 }
 
 func convertToInt(s string) int {
@@ -35,9 +41,10 @@ func convertToInt(s string) int {
 	return i
 }
 
+
 // ========= Network =========
 
-func enterQueue(nickname string) (me User, opponent User) {
+func match(nickname string) (me User, opponent User) {
 	// @STEP 2: connect to server
 	conn, err := net.Dial("tcp", SERVER_IP+":"+SERVER_PORT)
 	if err != nil {
@@ -63,21 +70,26 @@ func enterQueue(nickname string) (me User, opponent User) {
 		panic(err)
 	}
 
-	// recv opponent info <nickname>:<ip>:<port>
+	// recv opponent info <nickname>:<ip>:<port>:<my turn>:<opponent turn>
 	recv := string(buffer[:n])
 	splitted := strings.Split(recv, ":")
-	if len(splitted) != 3 {
+	if len(splitted) != 5 {
 		panic("invalid opponent info")
 	}
+
+	myTurn := convertToInt(splitted[3])
+	opponentTurn := convertToInt(splitted[4])
 
 	return User{
 			nickname: nickname,
 			ip:       SERVER_IP,
 			port:     clientPort,
+			isFirst: myTurn == 0,
 		}, User{
 			nickname: splitted[0],
 			ip:       splitted[1],
 			port:     convertToInt(splitted[2]),
+			isFirst: opponentTurn == 0,
 		}
 }
 
@@ -226,16 +238,33 @@ func clear() {
 	}
 }
 
+func checkUserName(name string) bool {
+	if len(name) > maxNameLen {
+		return false
+	}
+
+	for _, c := range name {
+		if c < 'a' || c > 'z' {
+			return false
+		}
+	}
+
+	return true
+}
+
 func main() {
 	// @STEP 1: get command
 	// example: go run P2POmokClient.go <nickname>
 	if len(os.Args) != 2 {
-		fmt.Println("Usage: go run P2POmokClient.go <nickname>")
-		return
+		panic("invalid command, must enter nickname!")
 	}
 
 	nickname := os.Args[1]
-	me, opponent := enterQueue(nickname)
+	if !checkUserName(nickname) {
+		panic("invalid nickname")
+	}
+
+	me, opponent := match(nickname)
 	// create udp connection
 	recvConn, err := net.ListenUDP("udp", &net.UDPAddr{
 		IP:   net.ParseIP(me.ip),
@@ -263,6 +292,7 @@ func main() {
 		}
 	}(recvConn)
 
+	// game logic
 	clear()
 	board := Board{}
 	// x, y, turn, count, win := -1, -1, 0, 0, 0

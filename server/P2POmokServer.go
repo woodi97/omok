@@ -44,6 +44,7 @@ func main() {
 
 	for {
 		conn, err := listener.Accept()
+	  defer conn.Close()
 		if err != nil {
 			fmt.Println("Error accepting: ", err.Error())
 			continue
@@ -54,7 +55,6 @@ func main() {
 }
 
 func handleRequest(conn net.Conn) {
-	defer conn.Close()
 	buffer := make([]byte, 1024)
 
 	for {
@@ -100,9 +100,9 @@ func handleRequest(conn net.Conn) {
 			secondPlayer := connections[1]
 
 			// send opponent info
-			// <nickname>:<ip>:<port>
+			// <nickname>:<ip>:<port>:<my turn>:<opponent turn>
 			_, err = firstPlayer.connection.Write([]byte(
-				fmt.Sprintf("%s:%s:%s", secondPlayer.nickname, secondPlayer.ip, secondPlayer.port),
+				fmt.Sprintf("%s:%s:%s:%d:%d", secondPlayer.nickname, secondPlayer.ip, secondPlayer.port, 0, 1),
 			))
 
 			if err != nil {
@@ -111,13 +111,18 @@ func handleRequest(conn net.Conn) {
 			}
 
 			_, err = secondPlayer.connection.Write([]byte(
-				fmt.Sprintf("%s:%s:%s", firstPlayer.nickname, firstPlayer.ip, firstPlayer.port),
+				fmt.Sprintf("%s:%s:%s:%d:%d", firstPlayer.nickname, firstPlayer.ip, firstPlayer.port, 1, 0),
 			))
 
 			if err != nil {
 				fmt.Println("Error sending message: ", err.Error())
 				return
 			}
+
+			// clear connections
+			firstPlayer.connection.Close()
+			secondPlayer.connection.Close()
+
 
 			// clear connections
 			connections = []Connection{}
